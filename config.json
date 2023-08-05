@@ -1,0 +1,8 @@
+{
+	"DBUserName": "root",
+	"DBUserPass": "root",
+	"DBAddress": "localhost",
+	"DBPort": 33060,
+	"DatabaseName": "fx_tester_db",
+  "ServerPort": 8080
+}
