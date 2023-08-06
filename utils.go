@@ -119,3 +119,24 @@ func inSummerTime(t time.Time) bool {
 		return false
 	}
 }
+
+func checkPairName(pairName string) error {
+	if len(pairName) != 6 {
+		return ErrInvalidPairName{}
+	}
+
+	rep := regexp.MustCompile(`(?:[A-Z]{6})$`)
+	if !rep.MatchString(pairName) {
+		return ErrInvalidPairName{}
+	}
+
+	return nil
+}
+
+func getTimeType(timeTypeName string) (TimeType, error) {
+	timeType := timeTypeOf(timeTypeName)
+	if timeType == Unknown {
+		return timeType, ErrInvalidTimeType{}
+	}
+	return timeType, nil
+}

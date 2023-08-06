@@ -10,7 +10,37 @@ type (
 	ErrInvalidDateTimeFormat     struct{}
 	ErrInvalidTimeType           struct{}
 	ErrMultipleCause             struct{ errors []error }
+	ErrInvalidPairName           struct{}
+	ErrEmptyCandles              struct{}
 )
+
+func getErrorStatus(err error) (uint16, string) {
+	if err == nil {
+		return 0, "OK"
+	}
+
+	if _, ok := err.(ErrCannotGetMaxAllowedPacket); ok {
+		return 0x8001, err.Error()
+	}
+
+	if _, ok := err.(ErrInvalidDateTimeFormat); ok {
+		return 0x8002, err.Error()
+	}
+
+	if _, ok := err.(ErrInvalidTimeType); ok {
+		return 0x8003, err.Error()
+	}
+
+	if _, ok := err.(ErrMultipleCause); ok {
+		return 0x8004, err.Error()
+	}
+
+	if _, ok := err.(ErrInvalidPairName); ok {
+		return 0x8005, err.Error()
+	}
+
+	return 0x8FFF, err.Error()
+}
 
 func (ErrCannotGetMaxAllowedPacket) Error() string {
 	return "max_allowed_packetの取得に失敗しました"
@@ -22,6 +52,10 @@ func (ErrInvalidDateTimeFormat) Error() string {
 
 func (ErrInvalidTimeType) Error() string {
 	return "不正な時間軸が指定されました"
+}
+
+func (ErrEmptyCandles) Error() string {
+	return "ローソク足は必ず1件以上指定してください"
 }
 
 func (e ErrMultipleCause) Error() string {
@@ -52,4 +86,8 @@ func newErrMultipleCause(arguments ...error) error {
 		errors = append(errors, err)
 	}
 	return ErrMultipleCause{errors: errors}
+}
+
+func (ErrInvalidPairName) Error() string {
+	return "通貨ペア名が不正です。通貨ペア名に使用できる文字は大文字の英字で6文字までです"
 }

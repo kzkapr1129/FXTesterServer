@@ -9,6 +9,22 @@ import (
 	"strings"
 )
 
+type (
+	ApiResponseStatus struct {
+		ErrorCode    uint16 `json:"ErrorCode"`
+		ErrorMessage string `json:"ErrorMessage"`
+	}
+
+	ApiResponseUpload struct {
+		Status ApiResponseStatus `json:"Status"`
+	}
+)
+
+func newApiResponseStatus(err error) ApiResponseStatus {
+	errorCode, errorMessage := getErrorStatus(err)
+	return ApiResponseStatus{ErrorCode: errorCode, ErrorMessage: errorMessage}
+}
+
 type server struct {
 	impl *http.Server
 	db   *db
@@ -77,22 +93,49 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pairName := r.Header.Get("x-pair-name")
-	timeType := r.Header.Get("x-time-type")
-	log.Println(pairName)
-	log.Println(timeType)
+	writeResponse := func(err error) {
+		status := newApiResponseStatus(err)
+		json.NewEncoder(w).Encode(ApiResponseUpload{Status: status})
+	}
 
-	var payload UploadPayload
-	err := json.NewDecoder(r.Body).Decode(&payload)
+	timeTypeName := r.Header.Get("x-time-type")
+	timeType, err := getTimeType(timeTypeName)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
+		w.WriteHeader(http.StatusBadRequest)
+		writeResponse(err)
 		return
 	}
 
-	log.Println(payload)
+	pairName := r.Header.Get("x-pair-name")
+	err = checkPairName(pairName)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		writeResponse(err)
+		return
+	}
 
-	w.WriteHeader(http.StatusBadGateway)
+	var payload UploadPayload
+	err = json.NewDecoder(r.Body).Decode(&payload)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		writeResponse(err)
+		return
+	}
 
+	if len(payload.Data) <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		writeResponse(ErrEmptyCandles{})
+		return
+	}
+
+	err = Action.registerData(s.db, pairName, timeType, payload.Data)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		writeResponse(err)
+		return
+	}
+
+	writeResponse(nil)
 }
 
 func handleCORS(w http.ResponseWriter, r *http.Request,
