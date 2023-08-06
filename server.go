@@ -99,7 +99,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	timeTypeName := r.Header.Get("x-time-type")
-	timeType, err := getTimeType(timeTypeName)
+	timeType, err := Utils.getTimeType(timeTypeName)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		writeResponse(err)
@@ -107,7 +107,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pairName := r.Header.Get("x-pair-name")
-	err = checkPairName(pairName)
+	err = Utils.checkPairName(pairName)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		writeResponse(err)

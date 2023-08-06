@@ -6,7 +6,11 @@ import (
 	"time"
 )
 
-func minInt(a int, b int) int {
+type utils struct{}
+
+var Utils utils
+
+func (utils) minInt(a int, b int) int {
 	if a <= b {
 		return a
 	} else {
@@ -14,14 +18,14 @@ func minInt(a int, b int) int {
 	}
 }
 
-func getStringOrDefault(str string, def string) string {
+func (utils) getStringOrDefault(str string, def string) string {
 	if str == "" {
 		return def
 	}
 	return str
 }
 
-func convXMTimeToJpTime(dateTime string) (*time.Time, error) {
+func (utils) convXMTimeToJpTime(dateTime string) (*time.Time, error) {
 	rep := regexp.MustCompile(`(\d{4})\.(0[1-9]|1[0-2])\.(0[1-9]|1[0-9]|2[0-9]|3[0-1])(\s+([0-1][0-9]|2[0-3]):([0-5]\d)|\b)$`)
 
 	group := rep.FindStringSubmatch(dateTime)
@@ -32,8 +36,8 @@ func convXMTimeToJpTime(dateTime string) (*time.Time, error) {
 	year := group[1]
 	month := group[2]
 	day := group[3]
-	hour := getStringOrDefault(group[5], "00")
-	min := getStringOrDefault(group[6], "00")
+	hour := Utils.getStringOrDefault(group[5], "00")
+	min := Utils.getStringOrDefault(group[6], "00")
 
 	t, err := time.Parse(
 		"2006-01-02 15:04:05",
@@ -45,7 +49,7 @@ func convXMTimeToJpTime(dateTime string) (*time.Time, error) {
 
 	convJpTime := func(t time.Time) time.Time {
 		// XMのサーバー時間を日本時間に変換
-		if isSummerTime := inSummerTime(t); isSummerTime {
+		if isSummerTime := Utils.inSummerTime(t); isSummerTime {
 			// サマータイムの場合
 			jpTime := t.Add(time.Duration(6 * time.Hour))
 			return jpTime
@@ -61,8 +65,8 @@ func convXMTimeToJpTime(dateTime string) (*time.Time, error) {
 	return &jpTime, nil
 }
 
-func getCandleFixTime(dateTime string, timeType TimeType) (string, error) {
-	t, err := convXMTimeToJpTime(dateTime)
+func (utils) getCandleFixTime(dateTime string, timeType TimeType) (string, error) {
+	t, err := Utils.convXMTimeToJpTime(dateTime)
 	if err != nil {
 		return "", err
 	}
@@ -77,7 +81,7 @@ func getCandleFixTime(dateTime string, timeType TimeType) (string, error) {
 	return deltaTime.Format("2006-01-02 15:04:05"), nil
 }
 
-func inSummerTime(t time.Time) bool {
+func (utils) inSummerTime(t time.Time) bool {
 	/*
 	* XMのサマータイムの仕様
 	* 夏時間　3月最終の日曜日午前1時〜10月最終の日曜日午前1時 => GMT+2
@@ -120,7 +124,7 @@ func inSummerTime(t time.Time) bool {
 	}
 }
 
-func checkPairName(pairName string) error {
+func (utils) checkPairName(pairName string) error {
 	if len(pairName) != 6 {
 		return ErrInvalidPairName{}
 	}
@@ -133,7 +137,7 @@ func checkPairName(pairName string) error {
 	return nil
 }
 
-func getTimeType(timeTypeName string) (TimeType, error) {
+func (utils) getTimeType(timeTypeName string) (TimeType, error) {
 	timeType := timeTypeOf(timeTypeName)
 	if timeType == Unknown {
 		return timeType, ErrInvalidTimeType{}

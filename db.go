@@ -191,7 +191,7 @@ func (db *db) registerData(tx *sql.Tx, pairName string, timeType TimeType, candl
 	}
 
 	for i := 0; ; i += db.maxAllowedPacket {
-		numInsert := minInt(db.maxAllowedPacket, len(candles)-i)
+		numInsert := Utils.minInt(db.maxAllowedPacket, len(candles)-i)
 		if numInsert <= 0 {
 			break
 		}
@@ -227,7 +227,7 @@ func makeInsertDataSql(pairName string, timeType TimeType, candles []Candle) (st
 	for k := 0; k < len(candles); k++ {
 
 		c := candles[k]
-		t, err := getCandleFixTime(c.Time, timeType)
+		t, err := Utils.getCandleFixTime(c.Time, timeType)
 		if err != nil {
 			return "", err
 		}
