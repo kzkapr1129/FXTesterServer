@@ -141,6 +141,7 @@ func (db *db) close() error {
 
 // begin トランザクションを開始する
 func (db *db) begin(transaction func(tx *sql.Tx) error) error {
+	log.Println("transaction started..")
 	tx, err := db.impl.Begin()
 	if err != nil {
 		return err
