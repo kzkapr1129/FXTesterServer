@@ -1,14 +1,16 @@
-// Package main ここにパッケージの説明を書きます。
+// Package main メインパッケージ
 package main
 
 import (
-	"database/sql"
+	"context"
 	"encoding/json"
 	"log"
 	"os"
+	"os/signal"
+	"time"
 )
 
-// Config hoge
+// config 設定ファイルの内容を管理する構造体
 type config struct {
 	DBUserName   string
 	DBUserPass   string
@@ -32,57 +34,37 @@ func loadConfig() (*config, error) {
 	return &config, nil
 }
 
-// main ホゲホゲ
+// main プログラムのエントリーポイント
 func main() {
-
-	log.Println("load config...")
+	log.Println("設定ファイルを読み込んでいます")
 	config, err := loadConfig()
 	if err != nil {
 		log.Println("Failed to load config.json", err)
 		return
 	}
 
-	db := newDB(config)
-	defer db.close()
-
-	err = db.open()
+	s, err := newServer(config)
 	if err != nil {
-		log.Println(err)
+		log.Println("Failed to initialize server", err)
 		return
 	}
 
-	err = db.createDataTable("EURUSD")
-	if err != nil {
-		log.Println(err)
-		return
+	go func() {
+		s.accept()
+		log.Println("サーバーの受信待ちを終了しました")
+	}()
+
+	quit := make(chan os.Signal)
+	signal.Notify(quit, os.Interrupt)
+
+	<-quit
+
+	log.Println("終了処理を開始します")
+
+	ctx, _ := context.WithTimeout(context.Background(), 5*time.Second)
+	if err := s.shutdown(ctx); err != nil {
+		log.Print(err)
 	}
 
-	err = db.createHeadTable("EURUSD")
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	err = db.truncateHeadTable("EURUSD")
-	if err != nil {
-		log.Println(err)
-		return
-	}
-
-	db.begin(func(tx *sql.Tx) error {
-		candles := make([]Candle, 7)
-		candles[0].Time = "2023.03.30 20:00"
-		candles[1].Time = "2023.03.30 21:00"
-		candles[2].Time = "2023.03.30 22:00"
-		candles[3].Time = "2023.03.30 23:00"
-		candles[4].Time = "2023.03.31 00:00"
-		candles[5].Time = "2023.03.31 01:00"
-		candles[6].Time = "2023.03.31 02:00"
-		err = db.registerData(tx, "EURUSD", timeTypeOf("H1"), candles)
-		if err != nil {
-			return err
-		}
-
-		return db.registerHead(tx, "EURUSD")
-	})
+	log.Println("システムを終了します")
 }

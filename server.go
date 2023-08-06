@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -10,20 +11,55 @@ import (
 
 type server struct {
 	impl *http.Server
+	db   *db
 }
 
-func newServer(c *config) *server {
+func newServer(c *config) (*server, error) {
 	log.Printf("use port: %d\n", c.ServerPort)
-	return &server{impl: &http.Server{Addr: fmt.Sprintf(":%d", c.ServerPort)}}
+
+	db := newDB(c)
+	err := db.open()
+	if err != nil {
+		return nil, err
+	}
+
+	return &server{
+		impl: &http.Server{Addr: fmt.Sprintf(":%d", c.ServerPort)},
+		db:   db,
+	}, nil
 }
 
-func (s *server) accept() {
+func (s *server) accept() error {
 	http.HandleFunc("/api/upload", s.handleUpload)
 
 	err := s.impl.ListenAndServe()
 	if err != nil {
-		panic(err)
+		log.Println(err)
+		return err
 	}
+	return nil
+}
+
+func (s *server) shutdown(ctx context.Context) error {
+	if s.impl == nil {
+		return nil
+	}
+
+	log.Println("サーバーをシャットダウン中です")
+	errShutdown := s.impl.Shutdown(ctx)
+
+	if s.db == nil {
+		return errShutdown
+	}
+
+	log.Println("データベースをクローズ中です")
+	errDbClose := s.db.close()
+	if errDbClose != nil {
+		return newErrMultipleCause(errShutdown, errDbClose)
+	}
+
+	log.Println("サーバーリソースの解放に成功しました")
+	return nil
 }
 
 func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {

@@ -129,11 +129,14 @@ func (db *db) open() error {
 }
 
 // close DBをクローズする
-func (db *db) close() {
-	if db.impl != nil {
-		db.impl.Close()
-		db.impl = nil
+func (db *db) close() error {
+	if db.impl == nil {
+		return nil
 	}
+
+	err := db.impl.Close()
+	db.impl = nil
+	return err
 }
 
 // begin トランザクションを開始する
