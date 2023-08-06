@@ -11,12 +11,12 @@ import (
 
 type (
 	ApiResponseStatus struct {
-		ErrorCode    uint16 `json:"ErrorCode"`
-		ErrorMessage string `json:"ErrorMessage"`
+		ErrorCode    uint16 `json:"code"`
+		ErrorMessage string `json:"message"`
 	}
 
 	ApiResponseUpload struct {
-		Status ApiResponseStatus `json:"Status"`
+		Status ApiResponseStatus `json:"status"`
 	}
 )
 
