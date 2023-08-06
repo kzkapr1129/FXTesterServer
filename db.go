@@ -57,6 +57,21 @@ const (
 	`
 
 	SQL_TRUNCATE_HEAD_TABLE = "TRUNCATE TABLE %s_HEAD"
+
+	SQL_QUERY_UPLOADED_PAIR_NAMES = `
+		SELECT TABLE_NAME FROM information_schema.tables
+		WHERE 1 = 1
+			AND TABLE_SCHEMA = 'fx_tester_db'
+			AND TABLE_NAME REGEXP '^[A-Z]{6}$'
+	`
+
+	SQL_QUERY_UPLOADED_PAIR_DETAIL = `
+		SELECT 
+			TIME_TYPE
+			, COUNT(*) AS NUM_DATA
+		FROM %s
+		GROUP BY TIME_TYPE
+	`
 )
 
 type (
@@ -217,6 +232,46 @@ func (db *db) registerHead(tx *sql.Tx, pairName string) error {
 	sql := fmt.Sprintf(SQL_INSERT_HEAD_TABLE, pairName, pairName)
 	_, err := tx.Exec(sql)
 	return err
+}
+
+// getUploadedPairNames データがアップロードされている通貨ペア名の一覧を返却する
+func (db *db) getUploadedPairNames() ([]string, error) {
+	res, err := db.impl.Query(SQL_QUERY_UPLOADED_PAIR_NAMES)
+	if err != nil {
+		return nil, err
+	}
+
+	pairNames := make([]string, 0)
+	for res.Next() {
+		var pairName string
+		err = res.Scan(&pairName)
+		if err != nil {
+			return nil, err
+		}
+
+		pairNames = append(pairNames, pairName)
+	}
+
+	return pairNames, nil
+}
+
+func (db *db) getUploadedPairDetail(pairName string) (map[int]int, error) {
+	sql := fmt.Sprintf(SQL_QUERY_UPLOADED_PAIR_DETAIL, pairName)
+	res, err := db.impl.Query(sql)
+	if err != nil {
+		return nil, err
+	}
+
+	countTable := make(map[int]int)
+	for res.Next() {
+		var timeType int
+		var countData int
+		res.Scan(&timeType, &countData)
+
+		countTable[timeType] = countData
+	}
+
+	return countTable, nil
 }
 
 // makeInsertDataSql データテーブルへの挿入用SQLを作成し返却する
