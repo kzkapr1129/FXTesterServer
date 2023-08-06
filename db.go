@@ -56,7 +56,7 @@ const (
 				FIX_TIME = VALUES(FIX_TIME)
 	`
 
-	SQL_TRUNCATE_HEAD_TABLE = "TRUNCATE TABLE %s_HEAD"
+	SQL_DELETE_HEAD_TABLE = "DELETE FROM %s_HEAD"
 
 	SQL_QUERY_UPLOADED_PAIR_NAMES = `
 		SELECT TABLE_NAME FROM information_schema.tables
@@ -193,10 +193,10 @@ func (db *db) createHeadTable(pairName string) error {
 	return err
 }
 
-// truncateHeadTable ヘッドテーブルをトランケートする
-func (db *db) truncateHeadTable(pairName string) error {
-	sql := fmt.Sprintf(SQL_TRUNCATE_HEAD_TABLE, pairName)
-	_, err := db.impl.Exec(sql)
+// deleteHeadTable ヘッドテーブルを全削除します
+func (db *db) deleteHeadTable(tx *sql.Tx, pairName string) error {
+	sql := fmt.Sprintf(SQL_DELETE_HEAD_TABLE, pairName)
+	_, err := tx.Exec(sql)
 	return err
 }
 
