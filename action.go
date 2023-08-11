@@ -23,7 +23,7 @@ func (action) registerData(db *db, pairName string, timeType TimeType, candles [
 	}
 
 	return db.begin(func(tx *sql.Tx) error {
-		err = db.deleteHeadTable(tx, pairName)
+		err = db.deleteHeadTable(tx, pairName, timeType)
 		if err != nil {
 			return err
 		}
@@ -33,6 +33,6 @@ func (action) registerData(db *db, pairName string, timeType TimeType, candles [
 			return err
 		}
 
-		return db.registerHead(tx, pairName)
+		return db.registerHead(tx, pairName, timeType)
 	})
 }

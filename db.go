@@ -47,7 +47,8 @@ const (
 			ROW_NUMBER() OVER (PARTITION BY TIME_TYPE ORDER BY FIX_TIME ASC) AS ID,
 			TIME_TYPE,
 			FIX_TIME
-		FROM %s;
+		FROM %s
+		WHERE TIME_TYPE = %d
 	`
 
 	SQL_DATA_TABLE_ON_DUPLICATE_KEY_UPDATE = `
@@ -56,7 +57,7 @@ const (
 				FIX_TIME = VALUES(FIX_TIME)
 	`
 
-	SQL_DELETE_HEAD_TABLE = "DELETE FROM %s_HEAD"
+	SQL_DELETE_HEAD_TABLE = "DELETE FROM %s_HEAD WHERE TIME_TYPE = %d"
 
 	SQL_QUERY_UPLOADED_PAIR_NAMES = `
 		SELECT TABLE_NAME FROM information_schema.tables
@@ -194,8 +195,8 @@ func (db *db) createHeadTable(pairName string) error {
 }
 
 // deleteHeadTable ヘッドテーブルを全削除します
-func (db *db) deleteHeadTable(tx *sql.Tx, pairName string) error {
-	sql := fmt.Sprintf(SQL_DELETE_HEAD_TABLE, pairName)
+func (db *db) deleteHeadTable(tx *sql.Tx, pairName string, timeType TimeType) error {
+	sql := fmt.Sprintf(SQL_DELETE_HEAD_TABLE, pairName, int(timeType))
 	_, err := tx.Exec(sql)
 	return err
 }
@@ -228,8 +229,8 @@ func (db *db) registerData(tx *sql.Tx, pairName string, timeType TimeType, candl
 }
 
 // registerHead ヘッドテーブルにデータを挿入する
-func (db *db) registerHead(tx *sql.Tx, pairName string) error {
-	sql := fmt.Sprintf(SQL_INSERT_HEAD_TABLE, pairName, pairName)
+func (db *db) registerHead(tx *sql.Tx, pairName string, timeType TimeType) error {
+	sql := fmt.Sprintf(SQL_INSERT_HEAD_TABLE, pairName, pairName, int(timeType))
 	_, err := tx.Exec(sql)
 	return err
 }
