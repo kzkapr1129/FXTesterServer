@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -34,6 +35,10 @@ type (
 		Status      ApiResponseStatus `json:"status"`
 		PairDetails []PairDetail      `json:"details"`
 	}
+
+	ApiResponseDeleteData struct {
+		Status ApiResponseStatus `json:"status"`
+	}
 )
 
 func newApiResponseStatus(err error) ApiResponseStatus {
@@ -65,6 +70,7 @@ func (s *server) accept() error {
 	http.HandleFunc("/api/upload", s.handleUpload)
 	http.HandleFunc("/api/uploaded_pairs", s.handleGetUploadedPairs)
 	http.HandleFunc("/api/uploaded_pair_detail", s.handleGetUploadedPairDetail)
+	http.HandleFunc("/api/delete_data", s.handleDeleteData)
 
 	err := s.impl.ListenAndServe()
 	if err != nil {
@@ -226,6 +232,71 @@ func (s *server) handleGetUploadedPairDetail(w http.ResponseWriter, r *http.Requ
 
 	writeResponse(nil, countTable)
 
+}
+
+func (s *server) handleDeleteData(w http.ResponseWriter, r *http.Request) {
+
+	supportedParams := []string{
+		"x-pair-name",
+		"Content-Type",
+	}
+	timeTypePramas := make([]string, int(NumTimeType))
+	for i := 0; i < int(NumTimeType); i++ {
+		timeTypePramas[i] = fmt.Sprintf("x-time-type-%d", i)
+	}
+	supportedParams = append(supportedParams, timeTypePramas...)
+
+	supportedMethods := []string{
+		"DELETE",
+		"OPTIONS",
+	}
+
+	if handleCORS(w, r, supportedParams, supportedMethods) {
+		return
+	}
+
+	writeResponse := func(err error) {
+		status := newApiResponseStatus(err)
+		json.NewEncoder(w).Encode(ApiResponseDeleteData{Status: status})
+	}
+
+	pairName := r.Header.Get("x-pair-name")
+	err := Utils.checkPairName(pairName)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		writeResponse(err)
+		return
+	}
+
+	timeTypes := make([]TimeType, 0)
+	for _, timeTypeParam := range timeTypePramas {
+		timeTypeName := r.Header.Get(timeTypeParam)
+		timeType, err := Utils.getTimeType(timeTypeName)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			writeResponse(ErrInvalidTimeType{})
+			return
+		}
+		timeTypes = append(timeTypes, timeType)
+	}
+
+	if len(timeTypes) <= 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		writeResponse(ErrInvalidTimeType{})
+		return
+	}
+
+	err = s.db.begin(func(tx *sql.Tx) error {
+		return s.db.deleteData(tx, pairName, timeTypes)
+	})
+
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		writeResponse(ErrInvalidTimeType{})
+		return
+	}
+
+	writeResponse(nil)
 }
 
 func handleCORS(w http.ResponseWriter, r *http.Request,

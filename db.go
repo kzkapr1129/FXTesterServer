@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -72,6 +73,14 @@ const (
 			, COUNT(*) AS NUM_DATA
 		FROM %s
 		GROUP BY TIME_TYPE
+	`
+
+	SQL_DELETE_DATA = `
+			DELETE FROM %s WHERE TIME_TYPE in (%s)
+	`
+
+	SQL_DELETE_HEAD = `
+		DELETE FROM %s_HEAD WHERE TIME_TYPE in (%s)
 	`
 )
 
@@ -273,6 +282,23 @@ func (db *db) getUploadedPairDetail(pairName string) (map[int]int, error) {
 	}
 
 	return countTable, nil
+}
+
+func (db *db) deleteData(tx *sql.Tx, pairName string, timeTypes []TimeType) error {
+
+	inStatement := strings.Join(mapArray(timeTypes, func(v TimeType) string {
+		return strconv.FormatInt(int64(v), 10)
+	}), ",")
+
+	deleteDataSql := fmt.Sprintf(SQL_DELETE_DATA, pairName, inStatement)
+	_, err := tx.Exec(deleteDataSql)
+	if err != nil {
+		return err
+	}
+
+	deleteHeadSql := fmt.Sprintf(SQL_DELETE_HEAD, pairName, inStatement)
+	_, err = tx.Exec(deleteHeadSql)
+	return err
 }
 
 // makeInsertDataSql データテーブルへの挿入用SQLを作成し返却する

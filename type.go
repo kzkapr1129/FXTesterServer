@@ -33,6 +33,7 @@ const (
 	Daily
 	Weekly
 	Unknown
+	NumTimeType = Unknown
 )
 
 // timeTypeOf は文字列を[timeType]型に変換します
