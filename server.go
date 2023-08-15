@@ -17,11 +17,20 @@ type (
 		ErrorMessage string `json:"message"`
 	}
 
-	ApiResponseUpload struct {
+	ApiResponsePostData struct {
 		Status ApiResponseStatus `json:"status"`
 	}
 
-	ApiResponseGetUploadedPairs struct {
+	ApiResponseDeleteData struct {
+		Status ApiResponseStatus `json:"status"`
+	}
+
+	ApiResponseGetDataSummary struct {
+		Status   ApiResponseStatus `json:"status"`
+		FixTimes []string          `json:"fixTimes"`
+	}
+
+	ApiResponseGetPairList struct {
 		Status    ApiResponseStatus `json:"status"`
 		PairNames []string          `json:"pairs"`
 	}
@@ -31,13 +40,9 @@ type (
 		CountData int `json:"countData"`
 	}
 
-	ApiResponseGetUploadedPairDetail struct {
+	ApiResponseGetPairDetail struct {
 		Status      ApiResponseStatus `json:"status"`
 		PairDetails []PairDetail      `json:"details"`
-	}
-
-	ApiResponseDeleteData struct {
-		Status ApiResponseStatus `json:"status"`
 	}
 )
 
@@ -67,10 +72,10 @@ func newServer(c *config) (*server, error) {
 }
 
 func (s *server) accept() error {
-	http.HandleFunc("/api/upload", s.handleUpload)
-	http.HandleFunc("/api/uploaded_pairs", s.handleGetUploadedPairs)
-	http.HandleFunc("/api/uploaded_pair_detail", s.handleGetUploadedPairDetail)
-	http.HandleFunc("/api/delete_data", s.handleDeleteData)
+	http.HandleFunc("/api/data", s.handleData)
+	http.HandleFunc("/api/data_summary", s.handleDataSummary)
+	http.HandleFunc("/api/pair_list", s.handlePairList)
+	http.HandleFunc("/api/pair_detail", s.handlePairDetail)
 
 	err := s.impl.ListenAndServe()
 	if err != nil {
@@ -102,24 +107,77 @@ func (s *server) shutdown(ctx context.Context) error {
 	return nil
 }
 
-func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
-	supportedParams := []string{
-		"x-pair-name",
-		"x-time-type",
-		"Content-Type",
-	}
+func (s *server) handleData(w http.ResponseWriter, r *http.Request) {
+	supportedParams := []string{"*"}
 	supportedMethods := []string{
 		"POST",
+		"GET",
+		"DELETE",
 		"OPTIONS",
 	}
-
 	if handleCORS(w, r, supportedParams, supportedMethods) {
 		return
 	}
 
+	switch r.Method {
+	case "POST":
+		s.handleDataPost(w, r)
+		break
+
+	case "GET":
+		break
+
+	case "DELETE":
+		s.handleDataDelete(w, r)
+		break
+	}
+}
+
+func (s *server) handleDataSummary(w http.ResponseWriter, r *http.Request) {
+	supportedParams := []string{"*"}
+	supportedMethods := []string{
+		"GET",
+		"OPTIONS",
+	}
+	if handleCORS(w, r, supportedParams, supportedMethods) {
+		return
+	}
+
+	writeResponse := func(err error, fixTimes []string) {
+		status := newApiResponseStatus(err)
+		json.NewEncoder(w).Encode(ApiResponseGetDataSummary{Status: status, FixTimes: fixTimes})
+	}
+
+	pairName := r.Header.Get("x-pair-name")
+	err := Utils.checkPairName(pairName)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		writeResponse(err, []string{})
+		return
+	}
+
+	timeTypeName := r.Header.Get("x-time-type")
+	timeType, err := Utils.getTimeType(timeTypeName)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		writeResponse(err, []string{})
+		return
+	}
+
+	fixTimes, err := s.db.queryDataSummary(pairName, timeType)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		writeResponse(err, []string{})
+		return
+	}
+
+	writeResponse(nil, fixTimes)
+}
+
+func (s *server) handleDataPost(w http.ResponseWriter, r *http.Request) {
 	writeResponse := func(err error) {
 		status := newApiResponseStatus(err)
-		json.NewEncoder(w).Encode(ApiResponseUpload{Status: status})
+		json.NewEncoder(w).Encode(ApiResponsePostData{Status: status})
 	}
 
 	timeTypeName := r.Header.Get("x-time-type")
@@ -152,7 +210,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = Action.registerData(s.db, pairName, timeType, payload.Data)
+	err = Action.postData(s.db, pairName, timeType, payload.Data)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		writeResponse(err)
@@ -162,99 +220,7 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	writeResponse(nil)
 }
 
-func (s *server) handleGetUploadedPairs(w http.ResponseWriter, r *http.Request) {
-	supportedParams := []string{
-		"Content-Type",
-	}
-	supportedMethods := []string{
-		"GET",
-		"OPTIONS",
-	}
-
-	if handleCORS(w, r, supportedParams, supportedMethods) {
-		return
-	}
-
-	writeResponse := func(err error, pairNames []string) {
-		status := newApiResponseStatus(err)
-		json.NewEncoder(w).Encode(ApiResponseGetUploadedPairs{Status: status, PairNames: pairNames})
-	}
-
-	pairNames, err := s.db.getUploadedPairNames()
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		writeResponse(err, []string{})
-		return
-	}
-
-	writeResponse(nil, pairNames)
-
-}
-
-func (s *server) handleGetUploadedPairDetail(w http.ResponseWriter, r *http.Request) {
-	supportedParams := []string{
-		"x-pair-name",
-		"Content-Type",
-	}
-	supportedMethods := []string{
-		"GET",
-		"OPTIONS",
-	}
-
-	if handleCORS(w, r, supportedParams, supportedMethods) {
-		return
-	}
-
-	writeResponse := func(err error, countTable map[int]int) {
-		status := newApiResponseStatus(err)
-		pairDetails := make([]PairDetail, 0)
-		for timeType, countData := range countTable {
-			pairDetails = append(pairDetails, PairDetail{TimeType: timeType, CountData: countData})
-		}
-		sort.Slice(pairDetails, func(i, j int) bool { return pairDetails[i].TimeType < pairDetails[j].TimeType })
-		json.NewEncoder(w).Encode(ApiResponseGetUploadedPairDetail{Status: status, PairDetails: pairDetails})
-	}
-
-	pairName := r.Header.Get("x-pair-name")
-	err := Utils.checkPairName(pairName)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		writeResponse(err, make(map[int]int))
-		return
-	}
-
-	countTable, err := s.db.getUploadedPairDetail(pairName)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		writeResponse(err, make(map[int]int))
-		return
-	}
-
-	writeResponse(nil, countTable)
-
-}
-
-func (s *server) handleDeleteData(w http.ResponseWriter, r *http.Request) {
-
-	supportedParams := []string{
-		"x-pair-name",
-		"Content-Type",
-	}
-	timeTypePramas := make([]string, int(NumTimeType))
-	for i := 0; i < int(NumTimeType); i++ {
-		timeTypePramas[i] = fmt.Sprintf("x-time-type-%d", i)
-	}
-	supportedParams = append(supportedParams, timeTypePramas...)
-
-	supportedMethods := []string{
-		"DELETE",
-		"OPTIONS",
-	}
-
-	if handleCORS(w, r, supportedParams, supportedMethods) {
-		return
-	}
-
+func (s *server) handleDataDelete(w http.ResponseWriter, r *http.Request) {
 	writeResponse := func(err error) {
 		status := newApiResponseStatus(err)
 		json.NewEncoder(w).Encode(ApiResponseDeleteData{Status: status})
@@ -266,6 +232,11 @@ func (s *server) handleDeleteData(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		writeResponse(err)
 		return
+	}
+
+	timeTypePramas := make([]string, int(NumTimeType))
+	for i := 0; i < int(NumTimeType); i++ {
+		timeTypePramas[i] = fmt.Sprintf("x-time-type-%d", i)
 	}
 
 	timeTypes := make([]TimeType, 0)
@@ -297,6 +268,78 @@ func (s *server) handleDeleteData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeResponse(nil)
+}
+
+func (s *server) handlePairList(w http.ResponseWriter, r *http.Request) {
+	supportedParams := []string{
+		"Content-Type",
+	}
+	supportedMethods := []string{
+		"GET",
+		"OPTIONS",
+	}
+
+	if handleCORS(w, r, supportedParams, supportedMethods) {
+		return
+	}
+
+	writeResponse := func(err error, pairNames []string) {
+		status := newApiResponseStatus(err)
+		json.NewEncoder(w).Encode(ApiResponseGetPairList{Status: status, PairNames: pairNames})
+	}
+
+	pairNames, err := s.db.getUploadedPairNames()
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		writeResponse(err, []string{})
+		return
+	}
+
+	writeResponse(nil, pairNames)
+
+}
+
+func (s *server) handlePairDetail(w http.ResponseWriter, r *http.Request) {
+	supportedParams := []string{
+		"x-pair-name",
+		"Content-Type",
+	}
+	supportedMethods := []string{
+		"GET",
+		"OPTIONS",
+	}
+
+	if handleCORS(w, r, supportedParams, supportedMethods) {
+		return
+	}
+
+	writeResponse := func(err error, countTable map[int]int) {
+		status := newApiResponseStatus(err)
+		pairDetails := make([]PairDetail, 0)
+		for timeType, countData := range countTable {
+			pairDetails = append(pairDetails, PairDetail{TimeType: timeType, CountData: countData})
+		}
+		sort.Slice(pairDetails, func(i, j int) bool { return pairDetails[i].TimeType < pairDetails[j].TimeType })
+		json.NewEncoder(w).Encode(ApiResponseGetPairDetail{Status: status, PairDetails: pairDetails})
+	}
+
+	pairName := r.Header.Get("x-pair-name")
+	err := Utils.checkPairName(pairName)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		writeResponse(err, make(map[int]int))
+		return
+	}
+
+	countTable, err := s.db.getUploadedPairDetail(pairName)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		writeResponse(err, make(map[int]int))
+		return
+	}
+
+	writeResponse(nil, countTable)
+
 }
 
 func handleCORS(w http.ResponseWriter, r *http.Request,

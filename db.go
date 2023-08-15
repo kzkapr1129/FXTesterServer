@@ -23,14 +23,6 @@ const (
 		)
 	`
 
-	SQL_CREATE_HEAD_TABLE = `
-		CREATE TABLE IF NOT EXISTS %s_HEAD (
-				ID DECIMAL(6, 0),
-				TIME_TYPE DECIMAL(1, 0),
-				FIX_TIME DATETIME,
-				PRIMARY KEY(ID,TIME_TYPE)
-		)`
-
 	SQL_INSERT_DATA = `
 		INSERT INTO %s (
 			TIME_TYPE,
@@ -42,23 +34,11 @@ const (
 		) VALUES
 	`
 
-	SQL_INSERT_HEAD_TABLE = `
-		INSERT INTO %s_HEAD
-		SELECT
-			ROW_NUMBER() OVER (PARTITION BY TIME_TYPE ORDER BY FIX_TIME ASC) AS ID,
-			TIME_TYPE,
-			FIX_TIME
-		FROM %s
-		WHERE TIME_TYPE = %d
-	`
-
 	SQL_DATA_TABLE_ON_DUPLICATE_KEY_UPDATE = `
 	  ON DUPLICATE KEY UPDATE
 		    TIME_TYPE = VALUES(TIME_TYPE),
 				FIX_TIME = VALUES(FIX_TIME)
 	`
-
-	SQL_DELETE_HEAD_TABLE = "DELETE FROM %s_HEAD WHERE TIME_TYPE = %d"
 
 	SQL_QUERY_UPLOADED_PAIR_NAMES = `
 		SELECT TABLE_NAME FROM information_schema.tables
@@ -79,8 +59,10 @@ const (
 			DELETE FROM %s WHERE TIME_TYPE in (%s)
 	`
 
-	SQL_DELETE_HEAD = `
-		DELETE FROM %s_HEAD WHERE TIME_TYPE in (%s)
+	SQL_DATA_SUMMARY = `
+		SELECT FIX_TIME FROM %s
+		WHERE TIME_TYPE = ?
+		ORDER BY FIX_TIME ASC
 	`
 )
 
@@ -133,6 +115,8 @@ func (db *db) open() error {
 	if err != nil {
 		return err
 	}
+	defer res.Close()
+
 	if !res.Next() {
 		return ErrCannotGetMaxAllowedPacket{}
 	}
@@ -196,20 +180,6 @@ func (db *db) createDataTable(pairName string) error {
 	return err
 }
 
-// createHeadTable ヘッドテーブルを作成する
-func (db *db) createHeadTable(pairName string) error {
-	sql := fmt.Sprintf(SQL_CREATE_HEAD_TABLE, pairName)
-	_, err := db.impl.Exec(sql)
-	return err
-}
-
-// deleteHeadTable ヘッドテーブルを全削除します
-func (db *db) deleteHeadTable(tx *sql.Tx, pairName string, timeType TimeType) error {
-	sql := fmt.Sprintf(SQL_DELETE_HEAD_TABLE, pairName, int(timeType))
-	_, err := tx.Exec(sql)
-	return err
-}
-
 // registerData データテーブルにデータを挿入する
 func (db *db) registerData(tx *sql.Tx, pairName string, timeType TimeType, candles []Candle) error {
 	if timeType == Unknown {
@@ -237,19 +207,13 @@ func (db *db) registerData(tx *sql.Tx, pairName string, timeType TimeType, candl
 	return nil
 }
 
-// registerHead ヘッドテーブルにデータを挿入する
-func (db *db) registerHead(tx *sql.Tx, pairName string, timeType TimeType) error {
-	sql := fmt.Sprintf(SQL_INSERT_HEAD_TABLE, pairName, pairName, int(timeType))
-	_, err := tx.Exec(sql)
-	return err
-}
-
 // getUploadedPairNames データがアップロードされている通貨ペア名の一覧を返却する
 func (db *db) getUploadedPairNames() ([]string, error) {
 	res, err := db.impl.Query(SQL_QUERY_UPLOADED_PAIR_NAMES)
 	if err != nil {
 		return nil, err
 	}
+	defer res.Close()
 
 	pairNames := make([]string, 0)
 	for res.Next() {
@@ -271,6 +235,7 @@ func (db *db) getUploadedPairDetail(pairName string) (map[int]int, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer res.Close()
 
 	countTable := make(map[int]int)
 	for res.Next() {
@@ -296,9 +261,34 @@ func (db *db) deleteData(tx *sql.Tx, pairName string, timeTypes []TimeType) erro
 		return err
 	}
 
-	deleteHeadSql := fmt.Sprintf(SQL_DELETE_HEAD, pairName, inStatement)
-	_, err = tx.Exec(deleteHeadSql)
-	return err
+	return nil
+}
+
+func (db *db) queryDataSummary(pairName string, timeType TimeType) ([]string, error) {
+	sql := fmt.Sprintf(SQL_DATA_SUMMARY, pairName)
+	stmt, err := db.impl.Prepare(sql)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+
+	row, err := stmt.Query(int(timeType))
+	if err != nil {
+		return nil, err
+	}
+	defer row.Close()
+
+	fixTimes := make([]string, 0)
+	for row.Next() {
+		var fixTime string
+		err = row.Scan(&fixTime)
+		if err != nil {
+			return nil, err
+		}
+		fixTimes = append(fixTimes, fixTime)
+	}
+
+	return fixTimes, nil
 }
 
 // makeInsertDataSql データテーブルへの挿入用SQLを作成し返却する
