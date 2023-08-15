@@ -44,6 +44,11 @@ type (
 		Status      ApiResponseStatus `json:"status"`
 		PairDetails []PairDetail      `json:"details"`
 	}
+
+	ApiResponseGetData struct {
+		Status  ApiResponseStatus `json:"status"`
+		Candles []Candle          `json:"candles"`
+	}
 )
 
 func newApiResponseStatus(err error) ApiResponseStatus {
@@ -125,6 +130,7 @@ func (s *server) handleData(w http.ResponseWriter, r *http.Request) {
 		break
 
 	case "GET":
+		s.handleDataGet(w, r)
 		break
 
 	case "DELETE":
@@ -218,6 +224,61 @@ func (s *server) handleDataPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeResponse(nil)
+}
+
+func (s *server) handleDataGet(w http.ResponseWriter, r *http.Request) {
+	writeResponse := func(err error, candles []Candle) {
+		status := newApiResponseStatus(err)
+		json.NewEncoder(w).Encode(ApiResponseGetData{Status: status, Candles: candles})
+	}
+
+	pairName := r.Header.Get("x-pair-name")
+	err := Utils.checkPairName(pairName)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		writeResponse(err, []Candle{})
+		return
+	}
+
+	lowerTimeTypeName := r.Header.Get("x-lower-time-type")
+	lowerTimeType, err := Utils.getTimeType(lowerTimeTypeName)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		writeResponse(err, []Candle{})
+		return
+	}
+
+	upperTimeTypeName := r.Header.Get("x-upper-time-type")
+	upperTimeType, err := Utils.getTimeType(upperTimeTypeName)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		writeResponse(err, []Candle{})
+		return
+	}
+
+	lowerTime := r.Header.Get("x-lower-time")
+	err = Utils.checkFixedTime(lowerTime)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		writeResponse(err, []Candle{})
+		return
+	}
+
+	limit, err := Utils.checkLimit(r.Header.Get("x-limit"))
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		writeResponse(err, []Candle{})
+		return
+	}
+
+	candles, err := s.db.queryData(pairName, lowerTimeType, lowerTime, upperTimeType, limit)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		writeResponse(err, []Candle{})
+		return
+	}
+
+	writeResponse(nil, candles)
 }
 
 func (s *server) handleDataDelete(w http.ResponseWriter, r *http.Request) {

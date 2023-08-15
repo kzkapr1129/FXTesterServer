@@ -12,6 +12,9 @@ type (
 	ErrMultipleCause             struct{ errors []error }
 	ErrInvalidPairName           struct{}
 	ErrEmptyCandles              struct{}
+	ErrInvalidData               struct{}
+	ErrInvalidLimit              struct{}
+	ErrInvalidFixTime            struct{}
 )
 
 func getErrorStatus(err error) (uint16, string) {
@@ -78,6 +81,18 @@ func (e ErrMultipleCause) Error() string {
 		}
 		return fmt.Sprintf("複数のエラーが発生しました: %s", strings.Join(errors, ","))
 	}
+}
+
+func (ErrInvalidData) Error() string {
+	return "アップロードデータの不足、もしくは不正パラメータの指定によりデータの取得に失敗しました。"
+}
+
+func (ErrInvalidLimit) Error() string {
+	return "リミットパラーメータが不正です。1〜100までの数値を指定してください(TODO:要調整)"
+}
+
+func (ErrInvalidFixTime) Error() string {
+	return "時刻が不正です。yyyy-MM-dd HH:mm:dd形式で指定してください"
 }
 
 func newErrMultipleCause(arguments ...error) error {

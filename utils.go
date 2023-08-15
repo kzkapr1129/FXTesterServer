@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"time"
 )
 
@@ -143,4 +144,28 @@ func (utils) getTimeType(timeTypeName string) (TimeType, error) {
 		return timeType, ErrInvalidTimeType{}
 	}
 	return timeType, nil
+}
+
+func (utils) checkLimit(limit string) (int, error) {
+	if limit == "" {
+		return 0, ErrInvalidLimit{}
+	}
+
+	ret, err := strconv.ParseInt(limit, 10, 32)
+	if err != nil {
+		return 0, ErrInvalidData{}
+	}
+
+	if ret < 1 || 100 < ret {
+		return 0, ErrInvalidLimit{}
+	}
+	return int(ret), nil
+}
+
+func (utils) checkFixedTime(fixedTime string) error {
+	rep := regexp.MustCompile(`^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[1-2]\d|3[0-1])\s(?:0[1-9]|1\d|2[0-3]):(?:[0-5]\d):00$`)
+	if !rep.MatchString(fixedTime) {
+		return ErrInvalidFixTime{}
+	}
+	return nil
 }

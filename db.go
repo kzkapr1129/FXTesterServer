@@ -64,6 +64,100 @@ const (
 		WHERE TIME_TYPE = ?
 		ORDER BY FIX_TIME ASC
 	`
+
+	SQL_DATA = `
+		WITH PARAM AS (
+				-- パラメータ
+			SELECT
+				? as LOWER_TIME_TYPE
+				, ? AS LOWER_FIX_TIME
+				, ? AS UPPER_TIME_TYPE
+		), LOWER_LATEST AS (
+				-- 下位足の最新ローソク足
+			SELECT
+					D.TIME_TYPE
+					, D.FIX_TIME
+					, D.CLOSE_PRICE
+			FROM %s D
+			LEFT JOIN PARAM P
+				ON 1 = 1
+			WHERE 1 = 1
+				AND TIME_TYPE = P.LOWER_TIME_TYPE
+				AND FIX_TIME = P.LOWER_FIX_TIME
+		), UPPER_CANDLES AS (
+				-- 上位足の過去のローソク足一覧
+			SELECT
+					D.TIME_TYPE
+					, D.FIX_TIME
+					, D.HIGH_PRICE
+					, D.OPEN_PRICE
+					, D.CLOSE_PRICE
+					, D.LOW_PRICE
+			FROM %s D
+			LEFT JOIN PARAM P
+				ON 1 = 1
+			WHERE 1 = 1
+				AND D.TIME_TYPE = P.UPPER_TIME_TYPE
+				AND D.FIX_TIME < ALL(SELECT FIX_TIME FROM LOWER_LATEST)
+			ORDER BY D.FIX_TIME DESC
+			LIMIT ?
+		), UPPER_LATEST AS (
+				-- 上位の最新ローソク足
+				SELECT
+						MAX(FIX_TIME) AS FIX_TIME
+				FROM UPPER_CANDLES
+				LEFT JOIN PARAM P
+					ON 1 = 1
+				WHERE 1 = 1
+					AND TIME_TYPE = P.UPPER_TIME_TYPE
+		), UPPER_UNFIXED AS (
+				-- 上位足の未確定足
+				SELECT
+					TIME_TYPE
+					, D.FIX_TIME
+					, D.HIGH_PRICE
+				, D.LOW_PRICE
+				, D.OPEN_PRICE
+				, D.CLOSE_PRICE
+				FROM %s D
+				LEFT JOIN PARAM P
+					ON 1 = 1
+				WHERE 1 = 1
+						AND (SELECT FIX_TIME FROM UPPER_LATEST) < D.FIX_TIME
+						AND D.FIX_TIME <= (SELECT FIX_TIME FROM LOWER_LATEST)
+						AND D.TIME_TYPE = P.LOWER_TIME_TYPE
+		)
+		SELECT
+				LL.FIX_TIME,
+				HIGH_AND_LOW_D.HIGH_PRICE,
+				OPEN_D.OPEN_PRICE,
+				LL.CLOSE_PRICE,
+				HIGH_AND_LOW_D.LOW_PRICE
+		FROM LOWER_LATEST LL
+		LEFT JOIN (
+				SELECT
+						MAX(HIGH_PRICE) AS HIGH_PRICE
+						, MIN(LOW_PRICE) AS LOW_PRICE
+				FROM UPPER_UNFIXED D
+		) HIGH_AND_LOW_D
+			ON 1 = 1
+		LEFT JOIN (
+				SELECT
+						OPEN_PRICE
+				FROM UPPER_UNFIXED
+				ORDER BY FIX_TIME DESC
+				LIMIT 1
+		) OPEN_D
+			ON 1 = 1
+		UNION ALL
+		SELECT
+			FIX_TIME
+			, HIGH_PRICE
+			, OPEN_PRICE
+			, CLOSE_PRICE
+			, LOW_PRICE
+		FROM UPPER_CANDLES
+	`
 )
 
 type (
@@ -289,6 +383,43 @@ func (db *db) queryDataSummary(pairName string, timeType TimeType) ([]string, er
 	}
 
 	return fixTimes, nil
+}
+
+func (db *db) queryData(
+	pairName string,
+	lowerTimeType TimeType,
+	lowerFixTime string,
+	upperTimeType TimeType,
+	limit int) ([]Candle, error) {
+
+	sql := fmt.Sprintf(SQL_DATA, pairName, pairName, pairName)
+
+	stmt, err := db.impl.Prepare(sql)
+	if err != nil {
+		return nil, err
+	}
+	defer stmt.Close()
+	rows, err := stmt.Query(int(lowerTimeType), lowerFixTime, int(upperTimeType), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	candles := make([]Candle, 0)
+	for rows.Next() {
+		var c Candle
+		err := rows.Scan(&c.Time, &c.High, &c.Open, &c.Close, &c.Low)
+		if err != nil {
+			return nil, err
+		}
+		candles = append(candles, c)
+	}
+
+	if len(candles) < 2 || candles[0].Time != lowerFixTime {
+		return nil, ErrInvalidData{}
+	}
+
+	return candles, nil
 }
 
 // makeInsertDataSql データテーブルへの挿入用SQLを作成し返却する
