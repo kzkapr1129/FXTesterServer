@@ -15,6 +15,7 @@ type (
 	ErrInvalidData               struct{}
 	ErrInvalidLimit              struct{}
 	ErrInvalidFixTime            struct{}
+	ErrNoEnoughUpperData         struct{}
 )
 
 func getErrorStatus(err error) (uint16, string) {
@@ -59,6 +60,10 @@ func (ErrInvalidTimeType) Error() string {
 
 func (ErrEmptyCandles) Error() string {
 	return "ローソク足は必ず1件以上指定してください"
+}
+
+func (ErrNoEnoughUpperData) Error() string {
+	return "上位足に指定時刻のデータが存在しない可能性があります。\nアップロードしたデータを確認してください。"
 }
 
 func (e ErrMultipleCause) Error() string {

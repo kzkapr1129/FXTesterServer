@@ -410,6 +410,10 @@ func (db *db) queryData(
 		var c Candle
 		err := rows.Scan(&c.Time, &c.High, &c.Open, &c.Close, &c.Low)
 		if err != nil {
+			rowId := len(candles)
+			if rowId == 0 {
+				return nil, ErrNoEnoughUpperData{}
+			}
 			return nil, err
 		}
 		candles = append(candles, c)
