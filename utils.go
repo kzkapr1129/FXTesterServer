@@ -26,12 +26,12 @@ func (utils) getStringOrDefault(str string, def string) string {
 	return str
 }
 
-func (utils) convXMTimeToJpTime(dateTime string) (*time.Time, error) {
+func (utils) convXMTimeToJpTime(dateTime string) (time.Time, error) {
 	rep := regexp.MustCompile(`(\d{4})\.(0[1-9]|1[0-2])\.(0[1-9]|1[0-9]|2[0-9]|3[0-1])(\s+([0-1][0-9]|2[0-3]):([0-5]\d)|\b)$`)
 
 	group := rep.FindStringSubmatch(dateTime)
 	if group == nil {
-		return nil, ErrInvalidDateTimeFormat{}
+		return time.Now(), ErrInvalidDateTimeFormat{}
 	}
 
 	year := group[1]
@@ -40,30 +40,30 @@ func (utils) convXMTimeToJpTime(dateTime string) (*time.Time, error) {
 	hour := Utils.getStringOrDefault(group[5], "00")
 	min := Utils.getStringOrDefault(group[6], "00")
 
-	t, err := time.Parse(
+	return time.Parse(
 		"2006-01-02 15:04:05",
 		fmt.Sprintf("%s-%s-%s %s:%s:00", year, month, day, hour, min))
 
-	if err != nil {
-		return nil, ErrInvalidDateTimeFormat{}
-	}
+	// if err != nil {
+	// 	return nil, ErrInvalidDateTimeFormat{}
+	// }
 
-	convJpTime := func(t time.Time) time.Time {
-		// XMのサーバー時間を日本時間に変換
-		if isSummerTime := Utils.inSummerTime(t); isSummerTime {
-			// サマータイムの場合
-			jpTime := t.Add(time.Duration(6 * time.Hour))
-			return jpTime
-		} else {
-			// サマータイム以外の場合
-			jpTime := t.Add(time.Duration(7 * time.Hour))
-			return jpTime
-		}
-	}
+	// convJpTime := func(t time.Time) time.Time {
+	// 	// XMのサーバー時間を日本時間に変換
+	// 	if isSummerTime := Utils.inSummerTime(t); isSummerTime {
+	// 		// サマータイムの場合
+	// 		jpTime := t.Add(time.Duration(6 * time.Hour))
+	// 		return jpTime
+	// 	} else {
+	// 		// サマータイム以外の場合
+	// 		jpTime := t.Add(time.Duration(7 * time.Hour))
+	// 		return jpTime
+	// 	}
+	// }
 
-	// XMの時刻を日本時間を取得
-	jpTime := convJpTime(t)
-	return &jpTime, nil
+	// // XMの時刻を日本時間を取得
+	// jpTime := convJpTime(t)
+	// return &jpTime, nil
 }
 
 func (utils) getCandleFixTime(dateTime string, timeType TimeType) (string, error) {
@@ -71,15 +71,16 @@ func (utils) getCandleFixTime(dateTime string, timeType TimeType) (string, error
 	if err != nil {
 		return "", err
 	}
+	return t.Format("2006-01-02 15:04:05"), nil
 
-	duration, err := timeType.getDuration()
-	if err != nil {
-		return "", err
-	}
+	// duration, err := timeType.getDuration()
+	// if err != nil {
+	// 	return "", err
+	// }
 
-	deltaTime := t.Add(duration)
+	// deltaTime := t.Add(duration)
 
-	return deltaTime.Format("2006-01-02 15:04:05"), nil
+	// return deltaTime.Format("2006-01-02 15:04:05"), nil
 }
 
 func (utils) inSummerTime(t time.Time) bool {
